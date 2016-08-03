@@ -1,6 +1,7 @@
 module PageRankDArray
 
 using DistributedArrays
+import DistributedArrays: map_localparts!, map_localparts
 
 include("kronGraph500NoPerm.jl")
 include("dsparse.jl") # Provides create_adj_matrix
@@ -75,13 +76,26 @@ function kernel2(files, n, state=nothing)
    info("Pruning and scaling")
    @time begin
       din = sum(adj_matrix, 1)                  # Compute in degree
-      adj_matrix[find(din == maximum(din))]=0   # Eliminate the super-node.
-      adj_matrix[find(din == 1)]=0              # Eliminate the leaf-node.
-      # dout = sum(adj_matrix, 2)                 # Compute out degree
-      # is = find(dout)                           # Find vertices with outgoing edges (dout > 0).
-      # DoutInvD = zeros(size(adj_matrix, 1))     # Create diagonal weight matrix.
-      # DoutInvD[is] = 1./dout[is]
-      # scale!(DoutInvD, adj_matrix)              # Apply weight matrix.
+      max_din = maximum(din)
+      map_localparts!(adj_matrix) do ladjm
+         ldin = fetch(din)
+         SparseArrays.fkeep!(ladjm, (i, j, v) -> begin
+            return !(ldin[i] == 1 || ldin[i] == max_din) # Drop the supernode or any leafnode
+         end)
+      end
+
+      dout = sum(adj_matrix, 2)                 # Compute out degree
+
+      # Construct weight diagonal
+      InvD = map_localparts(dout) do l_dout
+         l_InvD = similar(l_dout, Float64)
+         @inbounds for i in eachindex(l_dout, l_InvD)
+            v = ifelse(l_dout[i]==0, 0.0, 1/l_dout[i])
+            l_InvD[i] = v
+         end
+      end
+
+      scale!(InvD, adj_matrix)              # Apply weight matrix.
    end
 
    return adj_matrix
