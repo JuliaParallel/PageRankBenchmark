@@ -110,8 +110,8 @@ function PageRankPipeline(SCALE,EdgesPerVertex,Nfile);
 
     # Filter and weight the adjacency matrix.
     din = sum(A,1)                               # Compute in degree.
-    A[find(din == maximum(din))]=0               # Eliminate the super-node.
-    A[find(din == 1)]=0                          # Eliminate the leaf-node.
+    A[din .== maximum(din)]=0               # Eliminate the super-node.
+    A[din .== 1]=0                          # Eliminate the leaf-node.
     dout = sum(A,2)                              # Compute the out degree.
     is = find(dout)                               # Find vertices with outgoing edges (dout > 0).
     DoutInvD = zeros(Nmax)        # Create diagonal weight matrix.
