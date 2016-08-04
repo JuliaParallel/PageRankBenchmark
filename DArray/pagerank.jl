@@ -78,24 +78,29 @@ function kernel2(files, n, state=nothing)
       din = sum(adj_matrix, 1)                  # Compute in degree
       max_din = maximum(din)
       map_localparts!(adj_matrix) do ladjm
-         ldin = fetch(din)
+         ldin = Array(fetch(din))
          SparseArrays.fkeep!(ladjm, (i, j, v) -> begin
-            return !(ldin[i] == 1 || ldin[i] == max_din) # Drop the supernode or any leafnode
+            return !(ldin[j] == 1 || ldin[j] == max_din) # Drop the supernode or any leafnode
          end)
       end
 
       dout = sum(adj_matrix, 2)                 # Compute out degree
 
       # Construct weight diagonal
-      InvD = map_localparts(dout) do l_dout
-         l_InvD = similar(l_dout, Float64)
-         @inbounds for i in eachindex(l_dout, l_InvD)
-            v = ifelse(l_dout[i]==0, 0.0, 1/l_dout[i])
-            l_InvD[i] = v
-         end
-      end
+      # InvD = map_localparts(dout) do l_dout
+      #    l_InvD = similar(l_dout, Float64)
+      #    @inbounds for i in eachindex(l_dout, l_InvD)
+      #       v = ifelse(l_dout[i]==0, 0.0, 1/l_dout[i])
+      #       l_InvD[i] = v
+      #    end
+      # end
+      InvD = map(t -> ifelse(t==0, 0.0, inv(t)), dout)
+      # This is stupid but I don't think we have an easy way to convert to Vector
+      InvD = DArray(DistributedArrays.next_did(), I -> vec(localpart(InvD)), (size(InvD,1),),
+         vec(procs(InvD)), vec(map(t -> (t[1],), InvD.indexes)), InvD.cuts[1:1])
 
-      scale!(InvD, adj_matrix)              # Apply weight matrix.
+      adj_matrix_float = DistributedArrays.map_localparts(SparseMatrixCSC{Float64,Int}, adj_matrix)
+      scale!(InvD, adj_matrix_float)              # Apply weight matrix.
    end
 
    return adj_matrix
