@@ -80,7 +80,7 @@ function create_adj_matrix(state, n, ij)
         end
         SparseMatrixCSC(m,n,I, J, V)
     end
-    ps = parts(compute(state[:ctx], tmp2).result)
+    ps = reshape(parts(compute(state[:ctx], tmp2).result), (length(nrows), 1))
     dmn = DomainSplit(DenseDomain(1:n, 1:n), BlockedDomains((1,1), (cumsum(nrows), [n])))
     ComputedArray(Cat(parttype(ps[1]), dmn, ps))
 end
@@ -95,17 +95,16 @@ function kernel2(n, dir, files, dmn, state=setup())
    @assert size(adj_matrix) == (n, n)
    info("Pruning and scaling")
    @time begin
-      #din = gather(sum(adj_matrix, 1))          # Compute in degree
-      #adj_matrix[find(din == maximum(din))]=0   # Eliminate the super-node.
-      #adj_matrix[find(din == 1)]=0              # Eliminate the leaf-node.
-      # dout = sum(adj_matrix, 2)                 # Compute out degree
-      # is = find(dout)                           # Find vertices with outgoing edges (dout > 0).
-      # DoutInvD = zeros(size(adj_matrix, 1))     # Create diagonal weight matrix.
-      # DoutInvD[is] = 1./dout[is]
-      # scale!(DoutInvD, adj_matrix)              # Apply weight matrix.
+      din = gather(sum(adj_matrix, 1))          # Compute in degree
+      dout = gather(sum(adj_matrix, 2))
+      zero_nodes = find((din .== maximum(din)) | (din .== 1.0))
+      adj_matrix = compute(state[:ctx], setindex(adj_matrix, 0.0, :, zero_nodes))
+      dout = gather(sum(adj_matrix, 2))
+      nz = find(dout)
+      diagonal_wt = zeros(size(adj_matrix, 1))
+      diagonal_wt[nz] = 1./dout[nz]
+      compute(state[:ctx], Diagonal(diagonal_wt) * adj_matrix)
    end
-
-   return adj_matrix
 end
 
 
