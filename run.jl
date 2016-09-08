@@ -44,6 +44,11 @@ function main(args)
             help = "edge factor of the initial graph"
             default = 16
             range_tester = x -> x>0
+        "--pagerank_iterations", "-p"
+            arg_type = Int
+            help = "number of PageRank iterations"
+            default = 20
+            range_tester = x -> x>0
         "implementations"
             nargs = '+'
             required = true
@@ -63,7 +68,8 @@ function main(args)
         state = @eval $mod.setup()
 
         # Process all kernels
-        kernel_args = (parsed_args["workdir"], parsed_args["scale"], parsed_args["edge_factor"])
+        kernel_args = (parsed_args["workdir"], parsed_args["scale"], parsed_args["edge_factor"],
+            parsed_args["pagerank_iterations"])
         for k in 0:3
             isdefined(mod, Symbol("kernel$k")) || break
             kernel = @eval $mod.$(Symbol("kernel$(k)"))
