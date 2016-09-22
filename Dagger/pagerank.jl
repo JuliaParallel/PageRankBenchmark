@@ -15,12 +15,12 @@ end
 
 include("kernel0.jl")
 
-function kernel0(path, scl, avg_connections, state)
+function kernel0(path, scl, avg_connections, niter, state)
     X = generate_par(scl, avg_connections, state[:nparts])
-    (2^scl, write_files(X, state[:nparts], path, state[:ctx])...)
+    (2^scl, write_files(X, state[:nparts], path, state[:ctx])..., niter)
 end
 
-function kernel1(n, dir, files, dmn, state=setup())
+function kernel1(n, dir, files, dmn, niter, state=setup())
     info("Read data")
     @time edges = read_array(files, dmn, state)
     info("Sort")
@@ -28,7 +28,7 @@ function kernel1(n, dir, files, dmn, state=setup())
 
    info("Write edges")
    @time (n, write_files(edges, parts(edges.result) |> length,
-               dir, state[:ctx])...)
+               dir, state[:ctx])..., niter)
 end
 
 function read_array(files, dmn, state)
@@ -85,7 +85,7 @@ function create_adj_matrix(state, n, ij)
     ComputedArray(Cat(parttype(ps[1]), dmn, ps))
 end
 
-function kernel2(n, dir, files, dmn, state=setup())
+function kernel2(n, dir, files, dmn, niter, state=setup())
    info("Read data and turn it into a sparse matrix")
    @time begin
       ij = read_array(files, dmn, state)
@@ -103,9 +103,25 @@ function kernel2(n, dir, files, dmn, state=setup())
       nz = find(dout)
       diagonal_wt = zeros(size(adj_matrix, 1))
       diagonal_wt[nz] = 1./dout[nz]
-      compute(state[:ctx], Diagonal(diagonal_wt) * adj_matrix)
+      (compute(state[:ctx], Diagonal(diagonal_wt) * adj_matrix), niter)
    end
 end
 
+function kernel3(Adj, Niter, state = setup())
+   c = 0.85 # Should this be an argument
+
+   n = size(Adj, 1)
+   r = rand(n)
+   scale!(r, inv(norm(r, 1)))
+   a = (1 - c)/n
+
+   for i=1:Niter
+       s = Adj * r
+       s = scale(s, c)
+       r = s .+ (a * sum(r,2));                # Compute PageRank.
+   end
+
+   return compute(state[:ctx], r)
+end
 
 end
