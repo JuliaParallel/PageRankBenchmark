@@ -22,7 +22,7 @@ teardown(state) = return nothing
 #
 
 function kernel0(dir, scl, EdgesPerVertex, niter, state=nothing)
-   files = collect(joinpath(dir, "$i.tsv") for i in 1:nworkers())
+   files = [joinpath(dir, "$i.tsv") for i in 1:nworkers()]
 
    n = 2^scl # Total number of vertices
    m = EdgesPerVertex * n # Total number of edges
@@ -34,12 +34,15 @@ function kernel0(dir, scl, EdgesPerVertex, niter, state=nothing)
    @assert length(files) == nworkers()
 
    lastWorker = maximum(workers())
-   @sync begin
-      for (id, filename) in zip(workers(), files)
-         nEdges = EdgesPerWorker
-         nEdges += ifelse(id == lastWorker, surplus, 0)
-         @async remotecall_wait(kronGraph500, id, filename, scl, nEdges)
-      end
+   # @sync begin
+   #    for (id, filename) in zip(workers(), files)
+   #       nEdges = EdgesPerWorker
+   #       nEdges += ifelse(id == lastWorker, surplus, 0)
+   #       @async remotecall_wait(kronGraph500, id, filename, scl, nEdges)
+   #    end
+   # end
+   map(distribute(files)) do fn
+      kronGraph500(fn, scl, EdgesPerWorker + (myid() == lastWorker ? 0 : surplus))
    end
    return dir, files, n, niter
 end
